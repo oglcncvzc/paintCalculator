@@ -27,14 +27,14 @@ export function ResultsSummary({ colors, surfaceArea, properties }: ResultsSumma
     return (
         <div className="space-y-6">
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-800">
-                <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">Total Estimated Usage</h4>
+                <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">Toplam Tahmini Kullanım</h4>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <p className="text-xs text-blue-600 dark:text-blue-300">Total Weight</p>
+                        <p className="text-xs text-blue-600 dark:text-blue-300">Toplam Ağırlık</p>
                         <p className="text-2xl font-bold text-blue-700 dark:text-blue-200">{totalWeight.toFixed(2)} g</p>
                     </div>
                     <div>
-                        <p className="text-xs text-blue-600 dark:text-blue-300">Surface Area</p>
+                        <p className="text-xs text-blue-600 dark:text-blue-300">Yüzey Alanı</p>
                         <p className="text-2xl font-bold text-blue-700 dark:text-blue-200">{surfaceArea.toFixed(1)} cm²</p>
                     </div>
                 </div>
@@ -43,7 +43,7 @@ export function ResultsSummary({ colors, surfaceArea, properties }: ResultsSumma
             <div className="space-y-3">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                     <Droplet className="w-4 h-4 text-gray-500" />
-                    Per Color Breakdown
+                    Renk Bazlı Dağılım
                 </h4>
                 <div className="space-y-2">
                     {totalUsage.map((item, index) => (
@@ -55,7 +55,7 @@ export function ResultsSummary({ colors, surfaceArea, properties }: ResultsSumma
                                 />
                                 <div>
                                     <p className="text-sm font-medium">{item.pantone.code}</p>
-                                    <p className="text-xs text-gray-500">{item.percentage.toFixed(1)}% Coverage</p>
+                                    <p className="text-xs text-gray-500">{item.percentage.toFixed(1)}% Kaplama</p>
                                 </div>
                             </div>
                             <div className="text-right">

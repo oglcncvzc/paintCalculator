@@ -312,10 +312,19 @@ export function calculateColorCoverage(
     }
 
     // Filter out colors with very low coverage (noise)
-    const result = processedColors.map((color, index) => ({
+    let result = processedColors.map((color, index) => ({
         ...color,
         percentage: (counts[index] / nonTransparentPixels) * 100
     })).filter(c => c.percentage > 2.0); // Filter out < 2.0% coverage
+
+    // Normalize percentages to sum to 100%
+    const totalPercentage = result.reduce((sum, c) => sum + c.percentage, 0);
+    if (totalPercentage > 0) {
+        result = result.map(c => ({
+            ...c,
+            percentage: (c.percentage / totalPercentage) * 100
+        }));
+    }
 
     // Re-sort by percentage desc
     return result.sort((a, b) => b.percentage - a.percentage);

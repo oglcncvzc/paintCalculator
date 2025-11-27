@@ -23,7 +23,7 @@ export function FileUpload({ onFileSelect, className }: FileUploadProps) {
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: {
-            "image/*": [".png", ".jpg", ".jpeg", ".svg", ".webp"],
+            "image/svg+xml": [".svg"],
         },
         multiple: false,
     });
@@ -49,10 +49,10 @@ export function FileUpload({ onFileSelect, className }: FileUploadProps) {
             </div>
             <div className="space-y-1">
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {isDragActive ? "Drop the file here" : "Click or drag file to upload"}
+                    {isDragActive ? "SVG dosyasını buraya bırakın" : "Yüklemek için tıklayın veya SVG dosyasını sürükleyin"}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                    SVG, PNG, JPG or WEBP (max 10MB)
+                    Sadece SVG (maks 10MB)
                 </p>
             </div>
         </div>

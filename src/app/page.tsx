@@ -27,15 +27,19 @@ export default function Home() {
     wastePercentage: 10
   });
 
+  const [history, setHistory] = useState<ExtractedColor[][]>([]);
+
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
     setColors([]);
+    setHistory([]);
     setPreviewUrl(URL.createObjectURL(selectedFile));
   };
 
   const handleClear = () => {
     setFile(null);
     setColors([]);
+    setHistory([]);
     setPreviewUrl(null);
   };
 
@@ -98,6 +102,7 @@ export default function Home() {
           percentage: c.percentage
         }));
         setColors(mappedColors);
+        setHistory([]); // Reset history on new analysis
       }
 
     } catch (error) {
@@ -108,8 +113,43 @@ export default function Home() {
     }
   };
 
+  const saveToHistory = () => {
+    setHistory(prev => [...prev, colors]);
+  };
+
   const handleRemoveColor = (indexToRemove: number) => {
+    saveToHistory();
     setColors(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleMergeColors = (sourceIndex: number, targetIndex: number) => {
+    if (sourceIndex === targetIndex) return;
+
+    saveToHistory();
+
+    setColors(prev => {
+      const newColors = [...prev];
+      const sourceColor = newColors[sourceIndex];
+      // Create a copy of the target color to avoid mutating the object in history
+      const targetColor = { ...newColors[targetIndex] };
+
+      // Update target color percentage
+      targetColor.percentage += sourceColor.percentage;
+
+      // Update the target color in the array
+      newColors[targetIndex] = targetColor;
+
+      // Remove source color
+      return newColors.filter((_, index) => index !== sourceIndex);
+    });
+  };
+
+  const handleUndo = () => {
+    if (history.length === 0) return;
+
+    const previousColors = history[history.length - 1];
+    setColors(previousColors);
+    setHistory(prev => prev.slice(0, -1));
   };
 
   const handleCalculate = (area: number, props: PaintProperties) => {
@@ -152,13 +192,8 @@ export default function Home() {
             <div className="bg-blue-600 p-2 rounded-lg">
               <Palette className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight">PaintCalc</span>
+            <span className="text-xl font-bold tracking-tight">Dekor Görsel Renk Ayrımı</span>
           </div>
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600 dark:text-gray-400">
-            <a href="#" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Dashboard</a>
-            <a href="#" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">History</a>
-            <a href="#" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Settings</a>
-          </nav>
         </div>
       </header>
 
@@ -167,7 +202,7 @@ export default function Home() {
           {/* Left Column: Upload & Preview */}
           <div className="lg:col-span-8 space-y-6">
             <section className="space-y-4">
-              <h2 className="text-2xl font-semibold tracking-tight">Project Assets</h2>
+              <h2 className="text-2xl font-semibold tracking-tight">Proje Dosyaları</h2>
 
               {!file ? (
                 <FileUpload onFileSelect={handleFileSelect} className="h-64" />
@@ -186,7 +221,7 @@ export default function Home() {
                           onChange={(e) => setIgnoreBackground(e.target.checked)}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <span>Ignore Background</span>
+                        <span>Arkaplanı Yoksay</span>
                       </label>
                     </div>
 
@@ -197,7 +232,7 @@ export default function Home() {
                         className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
                       >
                         {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Palette className="w-4 h-4" />}
-                        {isAnalyzing ? "Analyzing..." : "Re-Analyze"}
+                        {isAnalyzing ? "Analiz Ediliyor..." : "Analiz Et"}
                       </button>
                       <button
                         onClick={handleDownloadSeparations}
@@ -205,7 +240,7 @@ export default function Home() {
                         className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-gray-100 px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                       >
                         <Download className="w-4 h-4" />
-                        Download Separations
+                        Ayrıştırmaları İndir
                       </button>
                     </div>
                   </div>
@@ -215,6 +250,20 @@ export default function Home() {
                     colors={colors}
                     isLoading={isAnalyzing}
                     onRemove={handleRemoveColor}
+                    onMerge={handleMergeColors}
+                    onUndo={handleUndo}
+                    canUndo={history.length > 0}
+                    onDownload={(color) => {
+                      const img = new Image();
+                      if (previewUrl) {
+                        img.src = previewUrl;
+                        img.onload = () => {
+                          import("@/lib/export-utils").then(mod => {
+                            mod.generateSingleSeparation(img, color, colors, "svg");
+                          });
+                        };
+                      }
+                    }}
                   />
                 </div>
               )}
@@ -239,7 +288,7 @@ export default function Home() {
                   onClick={handleGenerateReport}
                   className="w-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 py-3 rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                 >
-                  Generate PDF Report
+                  PDF Raporu Oluştur
                   <FileText className="w-4 h-4" />
                 </button>
               </div>
