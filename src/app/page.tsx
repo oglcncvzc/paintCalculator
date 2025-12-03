@@ -48,35 +48,12 @@ export default function Home() {
 
     setIsAnalyzing(true);
     try {
-      // 1. Load Image
-      const img = new Image();
-      img.src = previewUrl;
-      await new Promise((resolve) => { img.onload = resolve; });
-
-      // 2. Draw to Canvas (to convert SVG to PNG and resize if needed)
-      const canvas = document.createElement("canvas");
-      // Limit max dimension to 1000px for performance if needed, or keep original
-      // Keeping original for now to ensure quality
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Could not get canvas context");
-
-      // Fill white background first (for transparent SVGs)
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-
-      // 3. Convert to Blob (PNG)
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("Failed to create image blob");
-
-      // 4. Send to API
+      // SVG dosyasını doğrudan gönder
       const formData = new FormData();
-      formData.append("file", blob, "image.png"); // Send as png
+      formData.append("file", file, file.name);
       formData.append("ignoreBackground", ignoreBackground.toString());
 
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("http://10.34.5.135:3000/api/analyze", {
         method: "POST",
         body: formData,
       });
@@ -96,18 +73,17 @@ export default function Home() {
           pantone: {
             code: c.pantone.code,
             name: c.pantone.name,
-            hex: c.hex, // Using the detected hex as approximation
+            hex: c.hex,
             rgb: c.rgb
           },
           percentage: c.percentage
         }));
         setColors(mappedColors);
-        setHistory([]); // Reset history on new analysis
+        setHistory([]);
       }
 
     } catch (error) {
       console.error("Analysis failed:", error);
-      // TODO: Show error toast
     } finally {
       setIsAnalyzing(false);
     }
