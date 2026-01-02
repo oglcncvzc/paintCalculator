@@ -2,7 +2,7 @@
 
 import React from "react";
 import { ExtractedColor } from "@/lib/image-processing";
-import { Check, Copy, X, Undo2 } from "lucide-react";
+import { Check, Copy, X, Undo2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -14,10 +14,13 @@ interface ColorPaletteProps {
     onUndo?: () => void;
     canUndo?: boolean;
     onDownload?: (color: ExtractedColor) => void;
+    onPantoneChange?: (index: number, newCode: string) => void;
 }
 
-export function ColorPalette({ colors, isLoading, onRemove, onMerge, onUndo, canUndo, onDownload }: ColorPaletteProps) {
+export function ColorPalette({ colors, isLoading, onRemove, onMerge, onUndo, canUndo, onDownload, onPantoneChange }: ColorPaletteProps) {
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [editValue, setEditValue] = useState<string>("");
 
     const handleDragStart = (e: React.DragEvent, index: number) => {
         e.dataTransfer.setData("text/plain", index.toString());
@@ -40,6 +43,28 @@ export function ColorPalette({ colors, isLoading, onRemove, onMerge, onUndo, can
 
         if (!isNaN(sourceIndex) && onMerge) {
             onMerge(sourceIndex, targetIndex);
+        }
+    };
+
+    const startEditing = (index: number, currentHex: string) => {
+        setEditingIndex(index);
+        setEditValue(currentHex);
+    };
+
+    const saveEdit = (index: number) => {
+        let val = editValue.trim();
+        if (val) {
+            onPantoneChange?.(index, val);
+        }
+        setEditingIndex(null);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            (e.currentTarget as HTMLInputElement).blur();
+        } else if (e.key === 'Escape') {
+            setEditingIndex(null);
         }
     };
 
@@ -118,15 +143,35 @@ export function ColorPalette({ colors, isLoading, onRemove, onMerge, onUndo, can
                         <div className="p-3 space-y-2">
                             <div>
                                 <p className="text-xs text-gray-500 uppercase tracking-wider">Pantone Eşleşmesi</p>
-                                <p className="font-bold text-gray-900 dark:text-gray-100 truncate" title={color.pantone.name}>
-                                    {color.pantone.code}
-                                </p>
+                                {editingIndex === index ? (
+                                    <input
+                                        type="text"
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onBlur={() => saveEdit(index)}
+                                        onKeyDown={(e) => handleKeyDown(e, index)}
+                                        autoFocus
+                                        className="font-bold text-gray-900 dark:text-gray-100 border rounded px-1 w-full"
+                                        placeholder="Örn: 300 C"
+                                    />
+                                ) : (
+                                    <button
+                                        onClick={() => startEditing(index, color.pantone.code)}
+                                        className="group/edit flex items-center gap-2 font-bold text-gray-900 dark:text-gray-100 truncate w-full hover:text-blue-600 transition-colors"
+                                        title={color.pantone.name}
+                                    >
+                                        {color.pantone.code}
+                                        <Pencil className="w-3 h-3 opacity-0 group-hover/edit:opacity-100 transition-opacity" />
+                                    </button>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
-                                <div className="flex flex-col">
+                                <div className="flex flex-col flex-1 min-w-0 mr-2">
                                     <span className="text-[10px] text-gray-400">HEX</span>
-                                    <span className="text-xs font-mono text-gray-600 dark:text-gray-300">{color.hex}</span>
+                                    <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">
+                                        {color.hex}
+                                    </span>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     {onDownload && (

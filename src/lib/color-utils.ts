@@ -39,3 +39,13 @@ export function hexToRgb(hex: string): [number, number, number] | null {
         parseInt(result[3], 16)
     ] : null;
 }
+
+export function getPantoneByCode(code: string): PantoneColor | undefined {
+    // Normalize input: remove "PMS", "C", spaces, case-insensitive
+    const normalizedInput = code.toUpperCase().replace(/PMS|C|\s/g, "");
+
+    return PANTONE_COLORS.find(p => {
+        const normalizedP = p.code.toUpperCase().replace(/PMS|C|\s/g, "");
+        return normalizedP === normalizedInput;
+    });
+}

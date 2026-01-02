@@ -63,5 +63,6 @@ export const PANTONE_COLORS: PantoneColor[] = [
     { code: "PMS Cool Gray 5 C", name: "Gray", rgb: [177, 179, 179], hex: "#B1B3B3" },
     { code: "PMS Cool Gray 9 C", name: "Gray", rgb: [117, 120, 123], hex: "#75787B" },
     { code: "PMS Cool Gray 11 C", name: "Gray", rgb: [83, 86, 90], hex: "#53565A" },
+    { code: "PMS 626 C", name: "Green", rgb: [30, 81, 66], hex: "#1E5142" },
     { code: "PMS White", name: "White", rgb: [255, 255, 255], hex: "#FFFFFF" }
 ];

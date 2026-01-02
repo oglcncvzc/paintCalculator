@@ -10,6 +10,7 @@ import { Palette, Calculator, FileOutput, ArrowRight, Loader2, Download, FileTex
 import { extractColorsFromImage, calculateColorCoverage, ExtractedColor } from "@/lib/image-processing";
 import { PaintProperties } from "@/lib/geometry-utils";
 import { generatePdfReport, generateSeparationsZip } from "@/lib/export-utils";
+import { getPantoneByCode } from "@/lib/color-utils";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -128,6 +129,38 @@ export default function Home() {
     setHistory(prev => prev.slice(0, -1));
   };
 
+  const handlePantoneChange = (index: number, newCode: string) => {
+    saveToHistory();
+    setColors(prev => {
+      const newColors = [...prev];
+      const currentColor = newColors[index];
+
+      const matchedPantone = getPantoneByCode(newCode);
+
+      if (matchedPantone) {
+        newColors[index] = {
+          ...currentColor,
+          hex: matchedPantone.hex,
+          rgb: matchedPantone.rgb,
+          pantone: matchedPantone
+        };
+      } else {
+        // Fallback: If pantone not found, we update the code for display but can't find the color.
+        // Ideally we should alert the user, but inside setState updater we shouldn't side-effect.
+        // We will just update the label.
+        newColors[index] = {
+          ...currentColor,
+          pantone: {
+            ...currentColor.pantone,
+            code: newCode,
+            name: "Bilinmiyor" // Unknown
+          }
+        };
+      }
+      return newColors;
+    });
+  };
+
   const handleCalculate = (area: number, props: PaintProperties) => {
     setSurfaceArea(area);
     setPaintProperties(props);
@@ -228,6 +261,7 @@ export default function Home() {
                     onRemove={handleRemoveColor}
                     onMerge={handleMergeColors}
                     onUndo={handleUndo}
+                    onPantoneChange={handlePantoneChange}
                     canUndo={history.length > 0}
                     onDownload={(color) => {
                       const img = new Image();
