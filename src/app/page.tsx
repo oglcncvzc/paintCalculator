@@ -11,6 +11,7 @@ import { extractColorsFromImage, calculateColorCoverage, ExtractedColor } from "
 import { PaintProperties } from "@/lib/geometry-utils";
 import { generatePdfReport, generateSeparationsZip } from "@/lib/export-utils";
 import { getPantoneByCode } from "@/lib/color-utils";
+import { SimulationPreview } from "@/components/SimulationPreview";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -20,6 +21,11 @@ export default function Home() {
 
   // Refinement Options
   const [ignoreBackground, setIgnoreBackground] = useState(false);
+  const [ignoreBlack, setIgnoreBlack] = useState(false);
+  const [widthMm, setWidthMm] = useState(350);
+  const [heightMm, setHeightMm] = useState(200);
+  const [katSayisi, setKatSayisi] = useState(1.0);
+  const [numColors, setNumColors] = useState(10);
 
   const [surfaceArea, setSurfaceArea] = useState<number>(0);
   const [paintProperties, setPaintProperties] = useState<PaintProperties>({
@@ -53,8 +59,13 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", file, file.name);
       formData.append("ignoreBackground", ignoreBackground.toString());
+      formData.append("ignoreBlack", ignoreBlack.toString());
+      formData.append("width", widthMm.toString());
+      formData.append("height", heightMm.toString());
+      formData.append("katSayisi", katSayisi.toString());
+      formData.append("numColors", numColors.toString());
 
-      const response = await fetch("http://10.34.5.135:3000/api/analyze", {
+      const response = await fetch("http://localhost:3001/api/analyze", {
         method: "POST",
         body: formData,
       });
@@ -69,6 +80,7 @@ export default function Home() {
       // Map Python result to ExtractedColor interface
       if (data.kmeans && data.kmeans.colors) {
         const mappedColors: ExtractedColor[] = data.kmeans.colors.map((c: any) => ({
+          id: c.id || Math.random().toString(36).substr(2, 9),
           rgb: c.rgb,
           hex: c.hex,
           pantone: {
@@ -77,7 +89,8 @@ export default function Home() {
             hex: c.hex,
             rgb: c.rgb
           },
-          percentage: c.percentage
+          percentage: c.percentage,
+          representativeRgbs: [c.rgb] // Centroid from server is the first representative
         }));
         setColors(mappedColors);
         setHistory([]);
@@ -107,16 +120,20 @@ export default function Home() {
     setColors(prev => {
       const newColors = [...prev];
       const sourceColor = newColors[sourceIndex];
-      // Create a copy of the target color to avoid mutating the object in history
       const targetColor = { ...newColors[targetIndex] };
 
-      // Update target color percentage
+      // 1. Percentage merge
       targetColor.percentage += sourceColor.percentage;
 
-      // Update the target color in the array
-      newColors[targetIndex] = targetColor;
+      // 2. Identity merge (CRITICAL FIX)
+      // Combine all RGB identities so pixels belonging to the source 
+      // will now logically map to the target entry.
+      targetColor.representativeRgbs = [
+        ...targetColor.representativeRgbs,
+        ...sourceColor.representativeRgbs
+      ];
 
-      // Remove source color
+      newColors[targetIndex] = targetColor;
       return newColors.filter((_, index) => index !== sourceIndex);
     });
   };
@@ -219,19 +236,81 @@ export default function Home() {
                 <div className="space-y-6">
                   <ImagePreview file={file} onClear={handleClear} />
 
+                  <SimulationPreview
+                    originalImage={previewUrl}
+                    colors={colors}
+                    isAnalyzing={isAnalyzing}
+                  />
+
                   {/* Analysis Actions */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800">
-                      <Settings className="w-4 h-4 text-gray-500" />
-                      <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={ignoreBackground}
-                          onChange={(e) => setIgnoreBackground(e.target.checked)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span>Arkaplanı Yoksay</span>
-                      </label>
+                    <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <Settings className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm font-semibold">Analiz Ayarları</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={ignoreBackground}
+                            onChange={(e) => setIgnoreBackground(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>Arkaplanı Yoksay</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={ignoreBlack}
+                            onChange={(e) => setIgnoreBlack(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>Siyahı Yoksay</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-gray-500 font-medium">Genişlik (mm)</label>
+                          <input
+                            type="number"
+                            value={widthMm}
+                            onChange={(e) => setWidthMm(parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-gray-500 font-medium">Yükseklik (mm)</label>
+                          <input
+                            type="number"
+                            value={heightMm}
+                            onChange={(e) => setHeightMm(parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-gray-500 font-medium">Kat Sayısı</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={katSayisi}
+                            onChange={(e) => setKatSayisi(parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-gray-500 font-medium">Renk Sayısı</label>
+                          <input
+                            type="number"
+                            value={numColors}
+                            onChange={(e) => setNumColors(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     <div className="flex gap-3">

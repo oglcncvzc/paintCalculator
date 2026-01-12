@@ -13,6 +13,7 @@
     "clsx": "^2.1.1",
     "colorthief": "^2.6.0",
     "html2canvas": "^1.4.1",
+    "imagetracerjs": "^1.2.6",
     "jspdf": "^3.0.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.554.0",

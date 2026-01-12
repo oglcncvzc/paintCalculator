@@ -2,10 +2,12 @@ import { findNearestPantone, rgbToHex } from "./color-utils";
 import { PantoneColor } from "./pantone-colors";
 
 export interface ExtractedColor {
+    id: string; // Unique identifier for the cluster identity
     rgb: [number, number, number];
     hex: string;
     pantone: PantoneColor;
     percentage: number;
+    representativeRgbs: [number, number, number][]; // All original centroid RGBs this color represents
 }
 
 export interface CoverageOptions {
@@ -154,8 +156,9 @@ export async function extractColorsFromImage(imageElement: HTMLImageElement, col
     const ctx = canvas.getContext("2d");
     if (!ctx) return [];
 
-    // Resize for speed (max 200px dimension)
-    const scale = Math.min(1, 200 / Math.max(imageElement.width, imageElement.height));
+    // Resize for speed (max 800px dimension)
+    // 200px was too small for detailed patterns, causing noisy separation
+    const scale = Math.min(1, 800 / Math.max(imageElement.width, imageElement.height));
     canvas.width = imageElement.width * scale;
     canvas.height = imageElement.height * scale;
 
@@ -163,8 +166,8 @@ export async function extractColorsFromImage(imageElement: HTMLImageElement, col
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // Run K-Means
-    // K=10 to catch enough distinct starting points
-    const { centroids, assignments } = kMeans(imageData.data, 10);
+    // K=12 to catch enough distinct starting points (increased from 10)
+    const { centroids, assignments } = kMeans(imageData.data, 12);
 
     // Calculate counts for each centroid
     const counts = new Array(centroids.length).fill(0);
@@ -234,10 +237,12 @@ export async function extractColorsFromImage(imageElement: HTMLImageElement, col
     const extractedColors: ExtractedColor[] = mergedClusters.map((cluster) => {
         const pantone = findNearestPantone(cluster.rgb);
         return {
+            id: Math.random().toString(36).substr(2, 9),
             rgb: cluster.rgb,
             hex: rgbToHex(cluster.rgb[0], cluster.rgb[1], cluster.rgb[2]),
             pantone,
-            percentage: 0 // Will be calculated precisely later
+            percentage: 0,
+            representativeRgbs: [cluster.rgb] // Initially represents its own cluster
         };
     });
 
@@ -264,10 +269,12 @@ export function calculateColorCoverage(
     if (!options.ignoreWhite && !hasWhite) {
         const whitePantone = findNearestPantone([255, 255, 255]);
         processedColors.push({
+            id: 'system-white',
             rgb: [255, 255, 255],
             hex: "#FFFFFF",
             pantone: whitePantone,
-            percentage: 0
+            percentage: 0,
+            representativeRgbs: [[255, 255, 255]]
         });
     }
 
