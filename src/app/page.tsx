@@ -65,7 +65,7 @@ export default function Home() {
       formData.append("katSayisi", katSayisi.toString());
       formData.append("numColors", numColors.toString());
 
-      const response = await fetch("http://localhost:3001/api/analyze", {
+      const response = await fetch("http://10.34.5.135:3000/api/analyze", {
         method: "POST",
         body: formData,
       });
