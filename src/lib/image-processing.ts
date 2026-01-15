@@ -336,3 +336,154 @@ export function calculateColorCoverage(
     // Re-sort by percentage desc
     return result.sort((a, b) => b.percentage - a.percentage);
 }
+
+/**
+ * Creates a black-and-white mask for pixels matching any of the target RGBs.
+ * The target color pixels become black, everything else becomes white.
+ */
+export async function createBlackMask(
+    originalImage: HTMLImageElement,
+    targetRGBs: [number, number, number][],
+    tolerance: number = 30
+): Promise<Blob> {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("Could not get canvas context");
+
+    // Increase resolution for mask generation to avoid antialiasing issues on small renderings
+    // Especially for SVGs which might report small natural sizes
+    const targetLongEdge = 2048;
+    const currentMax = Math.max(originalImage.width, originalImage.height) || 1;
+    const scale = Math.max(1, targetLongEdge / currentMax);
+
+    canvas.width = Math.floor(originalImage.width * scale) || targetLongEdge;
+    canvas.height = Math.floor(originalImage.height * scale) || targetLongEdge;
+    ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imageData.data;
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = canvas.width;
+    maskCanvas.height = canvas.height;
+    const maskCtx = maskCanvas.getContext('2d');
+    if (!maskCtx) throw new Error("Could not get mask canvas context");
+
+    const maskData = maskCtx.createImageData(canvas.width, canvas.height);
+
+    for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        const a = pixels[i + 3];
+
+        if (a < 128) {
+            maskData.data[i] = 255;
+            maskData.data[i + 1] = 255;
+            maskData.data[i + 2] = 255;
+            maskData.data[i + 3] = 255;
+            continue;
+        }
+
+        let isMatch = false;
+        for (const targetRGB of targetRGBs) {
+            const distance = Math.sqrt(
+                Math.pow(r - targetRGB[0], 2) +
+                Math.pow(g - targetRGB[1], 2) +
+                Math.pow(b - targetRGB[2], 2)
+            );
+
+            if (distance <= tolerance) {
+                isMatch = true;
+                break;
+            }
+        }
+
+        if (isMatch) {
+            // Black (target color)
+            maskData.data[i] = 0;
+            maskData.data[i + 1] = 0;
+            maskData.data[i + 2] = 0;
+            maskData.data[i + 3] = 255;
+        } else {
+            // White (other colors)
+            maskData.data[i] = 255;
+            maskData.data[i + 1] = 255;
+            maskData.data[i + 2] = 255;
+            maskData.data[i + 3] = 255;
+        }
+    }
+
+    maskCtx.putImageData(maskData, 0, 0);
+
+    return new Promise((resolve) => {
+        maskCanvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else throw new Error("Could not create blob");
+        }, 'image/png');
+    });
+}
+
+export interface CalculationResult {
+    success: boolean;
+    method: string;
+    physical_dimensions_mm: { width: number; height: number };
+    kat_sayisi: number;
+    colors: Array<{
+        code: string;
+        label: string;
+        rgb: [number, number, number];
+        hex: string;
+        pantone: any;
+        black_pixels: number;
+        total_pixels: number;
+        coverage_percentage: number;
+        area_mm2: number;
+        paint_grams: number;
+    }>;
+    total_paint_grams: number;
+    total_area_mm2: number;
+}
+
+/**
+ * Sends masks and metadata to the backend for final paint calculation.
+ */
+export async function calculatePaintFromMasks(
+    masks: Array<{ blob: Blob; color: ExtractedColor }>,
+    width: number,
+    height: number,
+    katSayisi: number,
+    threshold: number
+): Promise<CalculationResult> {
+    const formData = new FormData();
+    formData.append('width', width.toString());
+    formData.append('height', height.toString());
+    formData.append('katSayisi', katSayisi.toString());
+    formData.append('threshold', threshold.toString());
+
+    // Send masks and metadata as paired keys: mask_i and mask_i_metadata
+    masks.forEach((mask, index) => {
+        const metadata = {
+            code: mask.color.pantone.code,
+            label: mask.color.pantone.name,
+            rgb: mask.color.rgb,
+            hex: mask.color.hex,
+            pantone: mask.color.pantone
+        };
+
+        formData.append(`mask_${index}`, mask.blob, `mask_${index}.png`);
+        formData.append(`mask_${index}_metadata`, JSON.stringify(metadata));
+    });
+
+    const { API_BASE_URL } = await import("./config");
+    const response = await fetch(`${API_BASE_URL}/api/calculate-from-masks`, {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        throw new Error("Calculation request failed");
+    }
+
+    return await response.json();
+}

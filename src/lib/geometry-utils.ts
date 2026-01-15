@@ -1,8 +1,8 @@
 export interface CupDimensions {
     type: 'cylinder' | 'conical';
-    height: number; // cm
-    topDiameter: number; // cm
-    bottomDiameter: number; // cm (same as top for cylinder)
+    height: number; // mm
+    topDiameter: number; // mm
+    bottomDiameter: number; // mm (same as top for cylinder)
 }
 
 export interface PaintProperties {
@@ -11,15 +11,15 @@ export interface PaintProperties {
     wastePercentage: number; // %
 }
 
+/**
+ * Calculates surface area in mm2
+ */
 export function calculateSurfaceArea(dimensions: CupDimensions): number {
     const { height, topDiameter, bottomDiameter, type } = dimensions;
     const r1 = topDiameter / 2;
     const r2 = type === 'cylinder' ? r1 : bottomDiameter / 2;
 
-    // Side Surface Area
-    // Cylinder: 2 * pi * r * h
-    // Conical Frustum: pi * (r1 + r2) * s
-
+    // Side Surface Area (mm2)
     if (type === 'cylinder') {
         return 2 * Math.PI * r1 * height;
     } else {
@@ -29,29 +29,15 @@ export function calculateSurfaceArea(dimensions: CupDimensions): number {
 }
 
 export function calculatePaintUsage(
-    surfaceArea: number, // cm²
+    surfaceAreaMm2: number, // mm²
     coveragePercentage: number, // % (0-100)
-    properties: PaintProperties
+    katSayisi: number
 ) {
-    // Effective Area
-    const effectiveArea = surfaceArea * (coveragePercentage / 100);
-
-    // Volume in cm³ (ml)
-    // Thickness is in microns. 1 micron = 0.0001 cm
-    const thicknessCm = properties.thickness / 10000;
-    const volumeCm3 = effectiveArea * thicknessCm;
-
-    // Weight in grams
-    // Mass = Volume * Density
-    const weightGrams = volumeCm3 * properties.density;
-
-    // Add waste
-    const totalWeight = weightGrams * (1 + properties.wastePercentage / 100);
+    const effectiveAreaMm2 = surfaceAreaMm2 * (coveragePercentage / 100);
+    const weightGrams = effectiveAreaMm2 * katSayisi;
 
     return {
-        effectiveArea,
-        volumeCm3,
-        weightGrams,
-        totalWeight
+        effectiveAreaMm2,
+        weightGrams
     };
 }

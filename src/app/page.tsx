@@ -7,11 +7,13 @@ import { ColorPalette } from "@/components/ColorPalette";
 import { CalculatorForm } from "@/components/CalculatorForm";
 import { ResultsSummary } from "@/components/ResultsSummary";
 import { Palette, Calculator, FileOutput, ArrowRight, Loader2, Download, FileText, Settings } from "lucide-react";
-import { extractColorsFromImage, calculateColorCoverage, ExtractedColor } from "@/lib/image-processing";
+import { extractColorsFromImage, calculateColorCoverage, ExtractedColor, createBlackMask, calculatePaintFromMasks } from "@/lib/image-processing";
 import { PaintProperties } from "@/lib/geometry-utils";
 import { generatePdfReport, generateSeparationsZip } from "@/lib/export-utils";
 import { getPantoneByCode } from "@/lib/color-utils";
 import { SimulationPreview } from "@/components/SimulationPreview";
+import { API_BASE_URL } from "@/lib/config";
+import { useEffect } from "react";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -22,24 +24,24 @@ export default function Home() {
   // Refinement Options
   const [ignoreBackground, setIgnoreBackground] = useState(false);
   const [ignoreBlack, setIgnoreBlack] = useState(false);
-  const [widthMm, setWidthMm] = useState(350);
-  const [heightMm, setHeightMm] = useState(200);
-  const [katSayisi, setKatSayisi] = useState(1.0);
   const [numColors, setNumColors] = useState(10);
 
-  const [surfaceArea, setSurfaceArea] = useState<number>(0);
-  const [paintProperties, setPaintProperties] = useState<PaintProperties>({
-    thickness: 20,
-    density: 1.2,
-    wastePercentage: 10
+  const [calculationProps, setCalculationProps] = useState({
+    width: 182.0,
+    height: 50.0,
+    katSayisi: 0.00001,
+    threshold: 30
   });
 
   const [history, setHistory] = useState<ExtractedColor[][]>([]);
+  const [calculationResult, setCalculationResult] = useState<any>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
 
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
     setColors([]);
     setHistory([]);
+    setCalculationResult(null);
     setPreviewUrl(URL.createObjectURL(selectedFile));
   };
 
@@ -54,18 +56,15 @@ export default function Home() {
     if (!file || !previewUrl) return;
 
     setIsAnalyzing(true);
+    setCalculationResult(null);
     try {
-      // SVG dosyasını doğrudan gönder
       const formData = new FormData();
       formData.append("file", file, file.name);
+      formData.append("numColors", numColors.toString());
       formData.append("ignoreBackground", ignoreBackground.toString());
       formData.append("ignoreBlack", ignoreBlack.toString());
-      formData.append("width", widthMm.toString());
-      formData.append("height", heightMm.toString());
-      formData.append("katSayisi", katSayisi.toString());
-      formData.append("numColors", numColors.toString());
 
-      const response = await fetch("http://10.34.5.135:3000/api/analyze", {
+      const response = await fetch(`${API_BASE_URL}/api/analyze-colors-only`, {
         method: "POST",
         body: formData,
       });
@@ -77,10 +76,9 @@ export default function Home() {
 
       const data = await response.json();
 
-      // Map Python result to ExtractedColor interface
-      if (data.kmeans && data.kmeans.colors) {
-        const mappedColors: ExtractedColor[] = data.kmeans.colors.map((c: any) => ({
-          id: c.id || Math.random().toString(36).substr(2, 9),
+      if (data.success && data.colors) {
+        const mappedColors: ExtractedColor[] = data.colors.map((c: any) => ({
+          id: c.color_id.toString(),
           rgb: c.rgb,
           hex: c.hex,
           pantone: {
@@ -90,7 +88,7 @@ export default function Home() {
             rgb: c.rgb
           },
           percentage: c.percentage,
-          representativeRgbs: [c.rgb] // Centroid from server is the first representative
+          representativeRgbs: [c.rgb]
         }));
         setColors(mappedColors);
         setHistory([]);
@@ -103,39 +101,71 @@ export default function Home() {
     }
   };
 
+  const handleFinalCalculate = async (currentColors: ExtractedColor[], targetProps?: typeof calculationProps) => {
+    const props = targetProps ?? calculationProps;
+
+    if (!file || !previewUrl || currentColors.length === 0) return;
+
+    setIsCalculating(true);
+    try {
+      const img = new Image();
+      img.src = previewUrl;
+      await new Promise(resolve => img.onload = resolve);
+
+      const maskPromises = currentColors.map(async (color) => {
+        // Use custom threshold from UI
+        const blob = await createBlackMask(img, color.representativeRgbs, props.threshold);
+        return { blob, color };
+      });
+
+      const masks = await Promise.all(maskPromises);
+
+      // Send raw parameters directly to backend
+      const results = await calculatePaintFromMasks(
+        masks,
+        props.width,
+        props.height,
+        props.katSayisi,
+        props.threshold
+      );
+
+      setCalculationResult(results);
+    } catch (error) {
+      console.error("Calculation failed:", error);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // Remove the old useEffect that auto-calculated to give user full control with the button
+
   const saveToHistory = () => {
     setHistory(prev => [...prev, colors]);
   };
 
-  const handleRemoveColor = (indexToRemove: number) => {
+  const handleRemoveColor = (index: number) => {
     saveToHistory();
-    setColors(prev => prev.filter((_, index) => index !== indexToRemove));
+    const newColors = colors.filter((_, i) => i !== index);
+    setColors(newColors);
+    // Removed auto-triggering handleFinalCalculate
   };
 
-  const handleMergeColors = (sourceIndex: number, targetIndex: number) => {
-    if (sourceIndex === targetIndex) return;
-
+  const handleMergeColors = async (sourceIndex: number, targetIndex: number) => {
     saveToHistory();
+    const newColors = [...colors];
+    const sourceColor = { ...newColors[sourceIndex] };
+    const targetColor = { ...newColors[targetIndex] };
 
-    setColors(prev => {
-      const newColors = [...prev];
-      const sourceColor = newColors[sourceIndex];
-      const targetColor = { ...newColors[targetIndex] };
+    targetColor.percentage += sourceColor.percentage;
+    targetColor.representativeRgbs = [
+      ...targetColor.representativeRgbs,
+      ...sourceColor.representativeRgbs
+    ];
 
-      // 1. Percentage merge
-      targetColor.percentage += sourceColor.percentage;
-
-      // 2. Identity merge (CRITICAL FIX)
-      // Combine all RGB identities so pixels belonging to the source 
-      // will now logically map to the target entry.
-      targetColor.representativeRgbs = [
-        ...targetColor.representativeRgbs,
-        ...sourceColor.representativeRgbs
-      ];
-
-      newColors[targetIndex] = targetColor;
-      return newColors.filter((_, index) => index !== sourceIndex);
-    });
+    newColors[targetIndex] = targetColor;
+    const filteredColors = newColors.filter((_, index) => index !== sourceIndex);
+    setColors(filteredColors);
+    // Removed auto-triggering handleFinalCalculate
   };
 
   const handleUndo = () => {
@@ -178,9 +208,12 @@ export default function Home() {
     });
   };
 
-  const handleCalculate = (area: number, props: PaintProperties) => {
-    setSurfaceArea(area);
-    setPaintProperties(props);
+  const handleCalculate = (props: any, shouldTrigger: boolean = false) => {
+    setCalculationProps(props);
+
+    if (shouldTrigger && colors.length > 0) {
+      handleFinalCalculate(colors, props);
+    }
   };
 
   const handleGenerateReport = async () => {
@@ -194,8 +227,9 @@ export default function Home() {
       fileName: file.name,
       imageElement: img,
       colors,
-      surfaceArea,
-      properties: paintProperties
+      width: calculationProps.width,
+      height: calculationProps.height,
+      katSayisi: calculationProps.katSayisi
     });
   };
 
@@ -274,34 +308,6 @@ export default function Home() {
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-800">
                         <div className="space-y-1.5">
-                          <label className="text-xs text-gray-500 font-medium">Genişlik (mm)</label>
-                          <input
-                            type="number"
-                            value={widthMm}
-                            onChange={(e) => setWidthMm(parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-gray-500 font-medium">Yükseklik (mm)</label>
-                          <input
-                            type="number"
-                            value={heightMm}
-                            onChange={(e) => setHeightMm(parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-gray-500 font-medium">Kat Sayısı</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={katSayisi}
-                            onChange={(e) => setKatSayisi(parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
                           <label className="text-xs text-gray-500 font-medium">Renk Sayısı</label>
                           <input
                             type="number"
@@ -316,11 +322,11 @@ export default function Home() {
                     <div className="flex gap-3">
                       <button
                         onClick={handleAnalyze}
-                        disabled={isAnalyzing}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                        disabled={isAnalyzing || isCalculating}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 active:scale-95"
                       >
-                        {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Palette className="w-4 h-4" />}
-                        {isAnalyzing ? "Analiz Ediliyor..." : "Analiz Et"}
+                        {(isAnalyzing || isCalculating) ? <Loader2 className="w-5 h-5 animate-spin" /> : <Palette className="w-5 h-5" />}
+                        {isAnalyzing ? "Renk Analizi Yapılıyor..." : isCalculating ? "Boya Hesaplanıyor..." : "Analiz Et & Hesapla"}
                       </button>
                       <button
                         onClick={handleDownloadSeparations}
@@ -363,13 +369,15 @@ export default function Home() {
           <div className="lg:col-span-4 space-y-6">
             <CalculatorForm onCalculate={handleCalculate} />
 
-            {colors.length > 0 && (
+            {colors.length > 0 &&
               <ResultsSummary
                 colors={colors}
-                surfaceArea={surfaceArea}
-                properties={paintProperties}
+                width={calculationProps.width}
+                height={calculationProps.height}
+                katSayisi={calculationProps.katSayisi}
+                calculationResult={calculationResult}
               />
-            )}
+            }
 
             {colors.length > 0 && (
               <div className="mt-4">
