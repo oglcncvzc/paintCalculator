@@ -47,27 +47,27 @@ export async function generatePdfReport(data: ReportData) {
 
     // Summary
     doc.setFontSize(14);
-    doc.text("Hassas Parametreler", 20, yPos);
+    doc.text("Analiz Parametreleri", 20, yPos);
     yPos += 10;
 
     const areaMm2 = width * height;
     doc.setFontSize(10);
-    doc.text(`Resim Genişliği: ${width.toFixed(1)} mm`, 20, yPos);
+    doc.text(`Genislik: ${width.toFixed(1)} mm`, 20, yPos);
     yPos += 5;
-    doc.text(`Resim Yüksekliği: ${height.toFixed(1)} mm`, 20, yPos);
+    doc.text(`Yukseklik: ${height.toFixed(1)} mm`, 20, yPos);
     yPos += 5;
-    doc.text(`Desen Alanı: ${areaMm2.toFixed(4)} mm²`, 20, yPos);
+    doc.text(`Desen Alani: ${areaMm2.toFixed(4)} mm2`, 20, yPos);
     yPos += 5;
-    doc.text(`Ağırlık Kat Sayısı: ${katSayisi.toFixed(8)}`, 20, yPos);
+    doc.text(`Agirlik Katsayisi: ${katSayisi.toFixed(8)}`, 20, yPos);
     yPos += 15;
 
     // Colors Table
     doc.setFontSize(14);
-    doc.text("Renk Dağılımı", 20, yPos);
+    doc.text("Renk Dagilimi", 20, yPos);
     yPos += 10;
 
-    const headers = ["Pantone", "Hex", "Kaplama %", "Hesaplanan Ağırlık (g)"];
-    const colWidths = [50, 40, 40, 50];
+    const headers = ["Renk", "Pantone", "Kaplama %", "Gram (g)"];
+    const colWidths = [20, 70, 40, 50];
     let xPos = 20;
 
     // Draw Headers
@@ -87,12 +87,27 @@ export async function generatePdfReport(data: ReportData) {
         const weight = areaMm2 * (color.percentage / 100) * katSayisi;
 
         xPos = 20;
-        doc.text(color.pantone.code, xPos, yPos); xPos += colWidths[0];
-        doc.text(color.hex, xPos, yPos); xPos += colWidths[1];
+
+        // Draw Color Box
+        const [r, g, b] = color.rgb;
+        doc.setFillColor(r, g, b);
+        doc.rect(xPos, yPos - 4, 8, 5, 'F');
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(xPos, yPos - 4, 8, 5, 'S'); // Light border
+        xPos += colWidths[0];
+
+        // Text Data
+        doc.text(color.pantone.code, xPos, yPos); xPos += colWidths[1];
         doc.text(`${color.percentage.toFixed(1)}%`, xPos, yPos); xPos += colWidths[2];
         doc.text(`${weight.toFixed(6)}`, xPos, yPos); xPos += colWidths[3];
 
-        yPos += 7;
+        yPos += 8;
+
+        // Add new page if needed
+        if (yPos > 280) {
+            doc.addPage();
+            yPos = 20;
+        }
     });
 
     doc.save("boya-raporu.pdf");
